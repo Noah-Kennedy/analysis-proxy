@@ -1,9 +1,35 @@
-use crate::egress;
+use crate::{egress, ingress};
 use hyper::client::ResponseFuture;
 use hyper::header::HOST;
 use hyper::{Body, Request, Response};
+use std::convert::Infallible;
+use std::future::{ready, Ready};
 use std::task::{Context, Poll};
 use tower::Service;
+
+pub struct MiddlewareMakeService {
+    egress: egress::ProxyService,
+}
+
+impl MiddlewareMakeService {
+    pub fn new(egress: egress::ProxyService) -> Self {
+        Self { egress }
+    }
+}
+
+impl<'a> Service<&'a ingress::TlsStream> for MiddlewareMakeService {
+    type Response = MiddlewareService;
+    type Error = Infallible;
+    type Future = Ready<Result<Self::Response, Infallible>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _req: &'a ingress::TlsStream) -> Self::Future {
+        ready(Ok(MiddlewareService::new(self.egress.clone())))
+    }
+}
 
 #[derive(Clone)]
 pub struct MiddlewareService {

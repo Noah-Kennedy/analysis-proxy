@@ -12,10 +12,9 @@ async fn main() {
 
     let ingress = ingress::TlsAcceptor::new(addr).unwrap();
     let egress = egress::ProxyService::new();
-    let middleware = middleware::MiddlewareService::new(egress);
+    let middleware = middleware::MiddlewareMakeService::new(egress);
 
-    let server = hyper::server::Builder::new(ingress, Http::new())
-        .serve(tower::make::Shared::new(middleware));
+    let server = hyper::server::Builder::new(ingress, Http::new()).serve(middleware);
 
     tracing::info!(?addr, "Serving proxy");
 
