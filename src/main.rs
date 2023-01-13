@@ -4,7 +4,7 @@ mod egress;
 mod ingress;
 mod middleware;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     tracing_subscriber::fmt::fmt().pretty().init();
 
