@@ -2,8 +2,10 @@ use core::task::{Context, Poll};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 
+use std::fmt::Debug;
 use std::future::Future;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::ready;
@@ -22,20 +24,25 @@ pub struct TlsAcceptor {
 }
 
 impl TlsAcceptor {
-    pub fn new(addr: SocketAddr) -> io::Result<Self> {
+    pub fn new(addr: SocketAddr, cert_path: &PathBuf) -> Self {
         // Build TLS configuration.
         let config = {
+            let cert = cert_path.join("cert.pem");
+            let key = cert_path.join("key.pem");
+
             // Load public certificate.
-            let certs = load_certs("certs/sample.pem")?;
+            let certs = load_certs(&cert).unwrap();
             // Load private key.
-            let key = load_private_key("certs/sample.rsa")?;
+            let key = load_private_key(&key).unwrap();
 
             // Do not use client certificate authentication.
             let mut cfg = rustls::ServerConfig::builder()
                 .with_safe_defaults()
                 .with_no_client_auth()
                 .with_single_cert(certs, key)
-                .map_err(|e| error(format!("{}", e)))?;
+                .map_err(|e| error(format!("{}", e)))
+                .unwrap();
+
             // Configure ALPN to accept HTTP/2, HTTP/1.1 in that order.
             cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
             sync::Arc::new(cfg)
@@ -44,7 +51,7 @@ impl TlsAcceptor {
         // Create a TCP listener via tokio.
         let incoming = AddrIncoming::bind(&addr).unwrap();
 
-        Ok(TlsAcceptor { config, incoming })
+        TlsAcceptor { config, incoming }
     }
 }
 
@@ -79,6 +86,8 @@ pub struct TlsStream {
 
 impl TlsStream {
     fn new(stream: AddrStream, config: Arc<ServerConfig>) -> TlsStream {
+        tracing::info!("New TLS stream");
+
         let accept = tokio_rustls::TlsAcceptor::from(config).accept(stream);
         TlsStream {
             state: State::Handshaking(accept),
@@ -96,9 +105,10 @@ impl AsyncRead for TlsStream {
         match pin.state {
             State::Handshaking(ref mut accept) => match ready!(Pin::new(accept).poll(cx)) {
                 Ok(mut stream) => {
-                    let sni = stream.get_mut().1.sni_hostname();
+                    let sni = stream.get_ref().1.sni_hostname();
+                    let alpn = stream.get_ref().1.alpn_protocol();
 
-                    tracing::info!(?sni, "Accepted new TLS connection");
+                    tracing::info!(?sni, ?alpn, "Accepted new TLS connection");
 
                     let result = Pin::new(&mut stream).poll_read(cx, buf);
                     pin.state = State::Streaming(stream);
@@ -147,10 +157,10 @@ impl AsyncWrite for TlsStream {
 }
 
 // Load public certificate from file.
-fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
+fn load_certs<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<Vec<rustls::Certificate>> {
     // Open certificate file.
     let certfile = fs::File::open(filename)
-        .map_err(|e| error(format!("failed to open {}: {}", filename, e)))?;
+        .map_err(|e| error(format!("failed to open {:?}: {}", filename, e)))?;
     let mut reader = io::BufReader::new(certfile);
 
     // Load and return certificate.
@@ -160,15 +170,16 @@ fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
 }
 
 // Load private key from file.
-fn load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
+fn load_private_key<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<rustls::PrivateKey> {
     // Open keyfile.
     let keyfile = fs::File::open(filename)
-        .map_err(|e| error(format!("failed to open {}: {}", filename, e)))?;
+        .map_err(|e| error(format!("failed to open {:?}: {}", filename, e)))?;
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.
-    let keys = rustls_pemfile::rsa_private_keys(&mut reader)
+    let keys = rustls_pemfile::pkcs8_private_keys(&mut reader)
         .map_err(|_| error("failed to load private key".into()))?;
+
     if keys.len() != 1 {
         return Err(error("expected a single private key".into()));
     }

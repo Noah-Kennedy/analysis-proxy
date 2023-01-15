@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.1.1", features = ["derive"] }
 hyper = { version = "0.14.23", features = ["full"] }
 hyper-rustls = { version = "0.23.2", features = ["webpki-roots", "http1", "http2"] }
 rustls = "0.20.8"
