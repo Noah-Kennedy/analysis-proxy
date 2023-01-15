@@ -40,7 +40,6 @@ impl TlsAcceptor {
                 .with_safe_defaults()
                 .with_no_client_auth()
                 .with_single_cert(certs, key)
-                .map_err(|e| error(format!("{}", e)))
                 .unwrap();
 
             // Configure ALPN to accept HTTP/2, HTTP/1.1 in that order.
