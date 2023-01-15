@@ -6,11 +6,11 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 #[derive(Clone)]
-pub struct ProxyService {
+pub struct EgressService {
     client: Arc<Client<HttpsConnector<HttpConnector>>>,
 }
 
-impl ProxyService {
+impl EgressService {
     pub fn new() -> Self {
         let builder = HttpsConnectorBuilder::new();
 
@@ -27,7 +27,7 @@ impl ProxyService {
     }
 }
 
-impl Service<Request<Body>> for ProxyService {
+impl Service<Request<Body>> for EgressService {
     type Response = Response<Body>;
     type Error = hyper::Error;
     type Future = ResponseFuture;

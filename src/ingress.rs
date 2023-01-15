@@ -2,6 +2,7 @@ use core::task::{Context, Poll};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 
+use rustls::{Certificate, PrivateKey};
 use std::fmt::Debug;
 use std::future::Future;
 use std::net::SocketAddr;
@@ -10,7 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::ready;
 use std::vec::Vec;
-use std::{fs, io, sync};
+use std::{fs, io};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_rustls::rustls::ServerConfig;
 
@@ -36,7 +37,7 @@ impl TlsAcceptor {
             let key = load_private_key(&key).unwrap();
 
             // Do not use client certificate authentication.
-            let mut cfg = rustls::ServerConfig::builder()
+            let mut cfg = ServerConfig::builder()
                 .with_safe_defaults()
                 .with_no_client_auth()
                 .with_single_cert(certs, key)
@@ -44,7 +45,7 @@ impl TlsAcceptor {
 
             // Configure ALPN to accept HTTP/2, HTTP/1.1 in that order.
             cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-            sync::Arc::new(cfg)
+            Arc::new(cfg)
         };
 
         // Create a TCP listener via tokio.
@@ -156,7 +157,7 @@ impl AsyncWrite for TlsStream {
 }
 
 // Load public certificate from file.
-fn load_certs<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<Vec<rustls::Certificate>> {
+fn load_certs<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<Vec<Certificate>> {
     // Open certificate file.
     let certfile = fs::File::open(filename)
         .map_err(|e| error(format!("failed to open {:?}: {}", filename, e)))?;
@@ -165,11 +166,11 @@ fn load_certs<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<Vec<rustls::Ce
     // Load and return certificate.
     let certs = rustls_pemfile::certs(&mut reader)
         .map_err(|_| error("failed to load certificate".into()))?;
-    Ok(certs.into_iter().map(rustls::Certificate).collect())
+    Ok(certs.into_iter().map(Certificate).collect())
 }
 
 // Load private key from file.
-fn load_private_key<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<rustls::PrivateKey> {
+fn load_private_key<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<PrivateKey> {
     // Open keyfile.
     let keyfile = fs::File::open(filename)
         .map_err(|e| error(format!("failed to open {:?}: {}", filename, e)))?;
@@ -183,5 +184,5 @@ fn load_private_key<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<rustls::
         return Err(error("expected a single private key".into()));
     }
 
-    Ok(rustls::PrivateKey(keys[0].clone()))
+    Ok(PrivateKey(keys[0].clone()))
 }
