@@ -2,7 +2,7 @@ use core::task::{Context, Poll};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 
-use rustls::{Certificate, PrivateKey};
+use rustls::{Certificate, PrivateKey, ServerConnection};
 use std::fmt::Debug;
 use std::future::Future;
 use std::net::SocketAddr;
@@ -107,8 +107,9 @@ impl AsyncRead for TlsStream {
                 Ok(mut stream) => {
                     let sni = stream.get_ref().1.sni_hostname();
                     let alpn = stream.get_ref().1.alpn_protocol();
+                    let connection = stream.get_ref().1;
 
-                    tracing::info!(?sni, ?alpn, "Accepted new TLS connection");
+                    tracing::info!(?sni, ?alpn, ?connection, "Accepted new TLS connection");
 
                     let result = Pin::new(&mut stream).poll_read(cx, buf);
                     pin.state = State::Streaming(stream);
