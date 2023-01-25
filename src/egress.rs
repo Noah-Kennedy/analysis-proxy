@@ -1,7 +1,9 @@
 use hyper::client::{HttpConnector, ResponseFuture};
 use hyper::service::Service;
 use hyper::{Body, Client, Request, Response};
-use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use hyper_rustls::{ConfigBuilderExt, HttpsConnector, HttpsConnectorBuilder};
+use rustls::version::TLS12;
+use rustls::ClientConfig;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -15,7 +17,15 @@ impl EgressService {
         let builder = HttpsConnectorBuilder::new();
 
         let connector = builder
-            .with_webpki_roots()
+            .with_tls_config(
+                ClientConfig::builder()
+                    .with_safe_default_cipher_suites()
+                    .with_safe_default_kx_groups()
+                    .with_protocol_versions(&[&TLS12])
+                    .unwrap()
+                    .with_webpki_roots()
+                    .with_no_client_auth(),
+            )
             .https_or_http()
             .enable_http1()
             .enable_http2()

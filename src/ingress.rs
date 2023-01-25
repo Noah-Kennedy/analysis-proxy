@@ -2,7 +2,8 @@ use core::task::{Context, Poll};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 
-use rustls::{Certificate, PrivateKey, ServerConnection};
+use rustls::version::TLS12;
+use rustls::{Certificate, PrivateKey};
 use std::fmt::Debug;
 use std::future::Future;
 use std::net::SocketAddr;
@@ -38,7 +39,10 @@ impl TlsAcceptor {
 
             // Do not use client certificate authentication.
             let mut cfg = ServerConfig::builder()
-                .with_safe_defaults()
+                .with_safe_default_cipher_suites()
+                .with_safe_default_kx_groups()
+                .with_protocol_versions(&[&TLS12])
+                .unwrap()
                 .with_no_client_auth()
                 .with_single_cert(certs, key)
                 .unwrap();
@@ -107,9 +111,9 @@ impl AsyncRead for TlsStream {
                 Ok(mut stream) => {
                     let sni = stream.get_ref().1.sni_hostname();
                     let alpn = stream.get_ref().1.alpn_protocol();
-                    let connection = stream.get_ref().1;
+                    let version = stream.get_ref().1.protocol_version();
 
-                    tracing::info!(?sni, ?alpn, ?connection, "Accepted new TLS connection");
+                    tracing::info!(?sni, ?alpn, ?version, "Accepted new TLS connection");
 
                     let result = Pin::new(&mut stream).poll_read(cx, buf);
                     pin.state = State::Streaming(stream);
@@ -178,7 +182,7 @@ fn load_private_key<P: AsRef<Path> + Debug>(filename: &P) -> io::Result<PrivateK
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.
-    let keys = rustls_pemfile::pkcs8_private_keys(&mut reader)
+    let keys = rustls_pemfile::rsa_private_keys(&mut reader)
         .map_err(|_| error("failed to load private key".into()))?;
 
     if keys.len() != 1 {
